@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+.env
+
+node_modules/
+.cache/
+
+cache/
+data/
+
+*.parquet
+*.sqlite
