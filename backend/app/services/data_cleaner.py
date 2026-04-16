@@ -8,9 +8,6 @@ def clean_laps(laps):
     laps = laps[laps['PitInTime'].isna()]
     laps = laps[laps['LapNumber'] > 2]
 
-    # Keep only dry compounds
-    laps = laps[laps['Compound'].isin(['SOFT', 'MEDIUM', 'HARD'])]
-
     return laps
 
 def remove_outliers(laps):

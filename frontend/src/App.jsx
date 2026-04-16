@@ -1,30 +1,27 @@
 import { useEffect, useState } from "react";
 import Plot from "react-plotly.js";
-import { getRaces, getDrivers, getComparison } from "./api";
+import { getRaces, getDrivers, getAnalysis } from "./api";
 import "./index.css";
 
 const driverColors = {
-  VER: "#1E41FF", 
-  PER: "#1E41FF", 
-  HAM: "#00D2BE", 
-  RUS: "#00D2BE", 
-  NOR: "#FF8700", 
-  PIA: "#FF8700",
-  LEC: "#DC0000", 
-  SAI: "#DC0000",
-  ALO: "#0090FF", 
-  STR: "#0090FF",
-  ALB: "#005AFF", 
-  SAR: "#005AFF",
-  TSU: "#2B4562", 
-  RIC: "#2B4562",
-  LAW: "#2B4562",
-  GAS: "#FF87BC", 
-  OCO: "#FF87BC",
-  BOT: "#52E252", 
-  ZHO: "#52E252",
-  MAG: "#FFFFFF", 
-  HUL: "#FFFFFF",
+  VER: "#1E41FF", PER: "#1E41FF", 
+  HAM: "#00D2BE", RUS: "#00D2BE", 
+  NOR: "#FF8700", PIA: "#FF8700",
+  LEC: "#DC0000", SAI: "#DC0000",
+  ALO: "#0090FF", STR: "#0090FF",
+  ALB: "#005AFF", SAR: "#005AFF",
+  TSU: "#2B4562", RIC: "#2B4562", LAW: "#2B4562",
+  GAS: "#FF87BC", OCO: "#FF87BC",
+  BOT: "#52E252", ZHO: "#52E252",
+  MAG: "#FFFFFF", HUL: "#FFFFFF",
+};
+
+const compoundColors = {
+  SOFT: "#FF2800",
+  MEDIUM: "#EAE000",
+  HARD: "#FFFFFF",
+  INTERMEDIATE: "#39B54A",
+  WET: "#00AEEF"
 };
 
 const fallbackColors = ["#E10600", "#00D2BE", "#FF8700", "#2B4562", "#DC0000", "#0090FF"];
@@ -36,10 +33,14 @@ function App() {
   const [race, setRace] = useState("");
   const [drivers, setDrivers] = useState([]);
   const [selectedDrivers, setSelectedDrivers] = useState([]);
-  const [data, setData] = useState([]);
+  
+  // Unified Analysis State
+  const [comparisonData, setComparisonData] = useState([]);
+  const [strategyData, setStrategyData] = useState([]);
+  const [insightsData, setInsightsData] = useState([]);
+
   const [hoveredDriver, setHoveredDriver] = useState(null);
 
-  // Architecture UPGRADE: Explicit async states
   const [isDriversLoading, setIsDriversLoading] = useState(false);
   const [isTelemetryLoading, setIsTelemetryLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -48,12 +49,11 @@ function App() {
     getRaces(year).then((res) => {
       setRaces(res.data.races);
       setRace(res.data.races[0]);
-    }).catch(err => {
+    }).catch(() => {
       setError("Backend Offline: Failed to fetch Grand Prix schedule");
     });
   }, [year]);
 
-  // Fetch Drivers Only on Race Change (Fast Metadata Fetch)
   useEffect(() => {
     if (!race) return;
 
@@ -61,7 +61,6 @@ function App() {
       try {
         setIsDriversLoading(true);
         setError(null);
-
         const res = await getDrivers(year, race);
         if (!res.data.drivers || res.data.drivers.length === 0) {
             setError("Failed to load drivers");
@@ -74,14 +73,14 @@ function App() {
         setIsDriversLoading(false);
       }
     };
-
     fetchDrivers();
   }, [race, year]);
 
-  // Fetch Telemetry ONLY on Explicit Driver Select (Heavy Payload)
   useEffect(() => {
     if (selectedDrivers.length === 0 || !race) {
-        setData([]);
+        setComparisonData([]);
+        setStrategyData([]);
+        setInsightsData([]);
         return;
     }
 
@@ -89,16 +88,16 @@ function App() {
       try {
         setIsTelemetryLoading(true);
         setError(null);
-
-        const res = await getComparison(year, race, selectedDrivers);
-        setData(res.data.data);
+        const res = await getAnalysis(year, race, selectedDrivers);
+        setComparisonData(res.data.comparison);
+        setStrategyData(res.data.strategy);
+        setInsightsData(res.data.insights);
       } catch (err) {
         setError("Failed to load telemetry data: Backend Timeout");
       } finally {
         setIsTelemetryLoading(false);
       }
     };
-
     fetchData();
   }, [selectedDrivers, race, year]);
 
@@ -114,8 +113,9 @@ function App() {
       return driverColors[driver] || fallbackColors[index % fallbackColors.length];
   };
 
+  // Build Degradation Chart
   const plotData = selectedDrivers.reduce((acc, driver, index) => {
-    const driverData = data.filter((d) => d.Driver === driver);
+    const driverData = comparisonData.filter((d) => d.Driver === driver);
     const stints = [...new Set(driverData.map(d => d.Stint))];
     
     stints.forEach(stint => {
@@ -147,9 +147,36 @@ function App() {
           customdata: stintData.map(() => driver), 
         });
     });
-
     return acc;
   }, []);
+
+  // Build Strategy Timeline Chart (Pirelli Style)
+  const strategyTraces = [];
+  const seenLegend = new Set();
+
+  strategyData.forEach(d => {
+      d.Stints.forEach(stint => {
+          const cColor = compoundColors[stint.Compound] || "#FFFFFF";
+          strategyTraces.push({
+              type: 'bar',
+              orientation: 'h',
+              y: [d.Driver],
+              x: [stint.EndLap - stint.StartLap],
+              base: stint.StartLap,
+              name: stint.Compound,
+              marker: { 
+                  color: stint.FreshTyre ? cColor : 'rgba(0,0,0,0)',
+                  pattern: !stint.FreshTyre ? { shape: "/", fgcolor: cColor, bgcolor: 'transparent', size: 5 } : undefined,
+                  line: { color: !stint.FreshTyre ? cColor : 'rgba(0,0,0,0.5)', width: !stint.FreshTyre ? 1 : 0 }
+              },
+              legendgroup: stint.Compound,
+              showlegend: !seenLegend.has(stint.Compound),
+              hovertext: `Lap ${stint.StartLap} - ${stint.EndLap} (${stint.Compound}${!stint.FreshTyre ? ' Used' : ' New'})`,
+              hoverinfo: "text"
+          });
+          seenLegend.add(stint.Compound);
+      });
+  });
 
   if (!showDashboard) {
     return (
@@ -164,6 +191,8 @@ function App() {
       </div>
     );
   }
+
+  const driverOrder = selectedDrivers;
 
   return (
     <div className="dashboard-container">
@@ -210,61 +239,70 @@ function App() {
         </div>
       </div>
 
-      <div className="chart-container">
-        {error && (
-            <div className="error-box">
-            {error}
-            </div>
-        )}
+      <div className="chart-container" style={{ height: "auto" }}>
+        {error && <div className="error-box">{error}</div>}
 
         {!error && selectedDrivers.length === 0 && (
-            <div className="empty-state">
-            Select drivers to begin telemetry analysis
-            </div>
+            <div className="empty-state">Select drivers to begin telemetry analysis</div>
         )}
 
         {!error && isTelemetryLoading && selectedDrivers.length > 0 && (
-            <div className="loading-box">
-            Analyzing tyre degradation...
+            <div className="loading-box">Analyzing tyre degradation...</div>
+        )}
+
+        {!error && !isTelemetryLoading && selectedDrivers.length > 0 && comparisonData.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <Plot
+                  data={plotData}
+                  layout={{
+                      title: { text: "Tyre Degradation Signatures", font: { family: "Outfit", size: 24, color: "#FFF" } },
+                      paper_bgcolor: "rgba(10,10,10,0.5)",
+                      plot_bgcolor: "transparent",
+                      font: { family: "Inter", color: "#FFF" },
+                      hovermode: "closest",
+                      xaxis: { title: "Tyre Life (laps)", gridcolor: "rgba(255,255,255,0.05)" },
+                      yaxis: { title: "Lap Time (s)", gridcolor: "rgba(255,255,255,0.05)", categoryorder: "array", categoryarray: driverOrder },
+                      autosize: true,
+                      margin: { t: 50, l: 50, r: 20, b: 50 },
+                      showlegend: false
+                  }}
+                  useResizeHandler={true}
+                  style={{ width: "100%", height: "400px" }}
+                />
+
+                <Plot
+                  data={strategyTraces}
+                  layout={{
+                      title: { text: "Race Strategy Timeline<br><sup style='color:gray;font-size:12px;'>Each bar represents a tracked telemetry stint (pit laps and safety cars filtered)</sup>", font: { family: "Outfit", size: 20, color: "#FFF" } },
+                      barmode: "stack",
+                      bargap: 0.65,
+                      paper_bgcolor: "rgba(10,10,10,0.5)",
+                      plot_bgcolor: "transparent",
+                      font: { family: "Inter", color: "#FFF" },
+                      xaxis: { title: "Race Lap", gridcolor: "rgba(255,255,255,0.05)" },
+                      yaxis: { categoryorder: "array", categoryarray: driverOrder, automargin: true },
+                      autosize: true,
+                      margin: { t: 60, l: 50, r: 20, b: 50 },
+                      showlegend: true,
+                      legend: { orientation: "h", y: -0.2, font: { family: "Outfit", color: "#FFF" } }
+                  }}
+                  useResizeHandler={true}
+                  style={{ width: "100%", height: `${Math.max(250, driverOrder.length * 40 + 100)}px` }}
+                />
             </div>
         )}
 
-        {!error && !isTelemetryLoading && selectedDrivers.length > 0 && (
-            <Plot
-            data={plotData}
-            onHover={(e) => {
-                if (e.points && e.points.length > 0) {
-                setHoveredDriver(e.points[0].customdata);
-                }
-            }}
-            onUnhover={() => setHoveredDriver(null)}
-            layout={{
-                title: { text: "Tyre Degradation Signatures", font: { family: "Outfit", size: 24, color: "#FFF" } },
-                paper_bgcolor: "transparent",
-                plot_bgcolor: "transparent",
-                font: { family: "Inter", color: "#FFF" },
-                hovermode: "closest",
-                xaxis: { 
-                title: "Tyre Life (laps)", 
-                gridcolor: "rgba(255,255,255,0.05)",
-                zerolinecolor: "rgba(255,255,255,0.1)"
-                },
-                yaxis: { 
-                title: "Lap Time (s)", 
-                gridcolor: "rgba(255,255,255,0.05)",
-                zerolinecolor: "rgba(255,255,255,0.1)"
-                },
-                autosize: true,
-                margin: { t: 50, l: 30, r: 20, b: 50 },
-                legend: { 
-                    orientation: "h", 
-                    y: -0.2, 
-                    font: { family: "Inter", size: 12, color: "rgba(255,255,255,0.7)" }
-                }
-            }}
-            useResizeHandler={true}
-            style={{ width: "100%", height: "100%" }}
-            />
+        {!error && !isTelemetryLoading && insightsData.length > 0 && (
+            <div className="insights-panel">
+              <h3 className="insights-title">Race Insights</h3>
+              <ul className="insights-list">
+                {insightsData.map((insight, idx) => (
+                  <li key={idx} className="insight-item">
+                     {insight}
+                  </li>
+                ))}
+              </ul>
+            </div>
         )}
       </div>
     </div>

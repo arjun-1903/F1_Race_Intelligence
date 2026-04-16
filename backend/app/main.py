@@ -11,9 +11,12 @@ import fastf1
 from app.services.pipeline_service import (
     get_processed_laps,
     get_degradation_data,
-    get_driver_comparison,
-    get_drivers_metadata
+    get_drivers_metadata,
+    get_driver_comparison
 )
+from app.services.degradation import compute_degradation
+from app.services.strategy_builder import get_strategy
+from app.services.story_engine import generate_insights
 
 app = FastAPI(title="F1 Tyre Degradation API")
 
@@ -102,24 +105,35 @@ def degradation(year: int, gp: str):
     return serialize_results(data)
 
 
-# 🔥 Driver comparison endpoint
-@app.get("/comparison")
-def comparison(
+# 🔥 Complete Analysis Engine
+@app.get("/analysis")
+def analysis(
     year: int,
     gp: str,
     drivers: str = Query(..., description="Comma separated drivers e.g. HAM,VER")
 ):
     driver_list = drivers.split(",")
 
-    laps = get_driver_comparison(year, gp, driver_list)
+    # 1. Pipeline Load
+    laps = get_processed_laps(year, gp)
+    filtered = laps[laps['Driver'].isin(driver_list)].copy()
 
+    # 2. Extract Subsystems
+    comparison_df = filtered.replace([np.inf, -np.inf], None).where(filtered.notna(), None)
+    comparison_data = serialize_comparison(comparison_df)
+    
+    # Enforce order logic
+    comparison_data = sorted(comparison_data, key=lambda x: driver_list.index(x["Driver"]))
 
-    laps = laps.replace([np.inf, -np.inf], None)
-    laps = laps.where(laps.notna(), None)
+    strategy_data = get_strategy(filtered, driver_list)
+    
+    degradation_data = compute_degradation(filtered)
+    insights_data = generate_insights(filtered, degradation_data, driver_list)
 
-    # Convert to JSON-friendly format
     return {
-        "data": serialize_comparison(laps)
+        "comparison": comparison_data,
+        "strategy": strategy_data,
+        "insights": insights_data
     }
 
 
