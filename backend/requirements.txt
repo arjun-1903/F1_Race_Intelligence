@@ -1,0 +1,4 @@
+# Backend Dependencies
+fastapi
+uvicorn
+pydantic
