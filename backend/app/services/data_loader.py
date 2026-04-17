@@ -14,7 +14,8 @@ def load_race_session(year: int, gp: str, metadata_only: bool = False):
     if metadata_only:
         session.load(laps=False, telemetry=False, weather=False, messages=False)
     else:
-        session.load()
+        # Prevent Render OOM by skipping heavy telemetry payloads
+        session.load(telemetry=False, weather=False, messages=False)
         
     return session
 
