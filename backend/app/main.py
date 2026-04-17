@@ -1,5 +1,5 @@
 # Main FastAPI entry point
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 import pandas as pd
@@ -112,29 +112,32 @@ def analysis(
     gp: str,
     drivers: str = Query(..., description="Comma separated drivers e.g. HAM,VER")
 ):
-    driver_list = drivers.split(",")
+    try:
+        driver_list = drivers.split(",")
 
-    # 1. Pipeline Load
-    laps = get_processed_laps(year, gp)
-    filtered = laps[laps['Driver'].isin(driver_list)].copy()
+        # 1. Pipeline Load
+        laps = get_processed_laps(year, gp)
+        filtered = laps[laps['Driver'].isin(driver_list)].copy()
 
-    # 2. Extract Subsystems
-    comparison_df = filtered.replace([np.inf, -np.inf], None).where(filtered.notna(), None)
-    comparison_data = serialize_comparison(comparison_df)
-    
-    # Enforce order logic
-    comparison_data = sorted(comparison_data, key=lambda x: driver_list.index(x["Driver"]))
+        # 2. Extract Subsystems
+        comparison_df = filtered.replace([np.inf, -np.inf], None).where(filtered.notna(), None)
+        comparison_data = serialize_comparison(comparison_df)
+        
+        # Enforce order logic
+        comparison_data = sorted(comparison_data, key=lambda x: driver_list.index(x["Driver"]))
 
-    strategy_data = get_strategy(filtered, driver_list)
-    
-    degradation_data = compute_degradation(filtered)
-    insights_data = generate_insights(filtered, degradation_data, driver_list)
+        strategy_data = get_strategy(filtered, driver_list)
+        
+        degradation_data = compute_degradation(filtered)
+        insights_data = generate_insights(filtered, degradation_data, driver_list)
 
-    return {
-        "comparison": comparison_data,
-        "strategy": strategy_data,
-        "insights": insights_data
-    }
+        return {
+            "comparison": comparison_data,
+            "strategy": strategy_data,
+            "insights": insights_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Telemetry unavailable or malformed for this session.")
 
 
 # 🔥 Driver list endpoint

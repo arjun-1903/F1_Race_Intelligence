@@ -3,9 +3,11 @@ import pandas as pd
 def clean_laps(laps):
     laps = laps.dropna(subset=['LapTime'])
 
-    # Remove pit laps
-    laps = laps[laps['PitOutTime'].isna()]
-    laps = laps[laps['PitInTime'].isna()]
+    # Remove pit laps if sensor data exists
+    if 'PitOutTime' in laps.columns:
+        laps = laps[laps['PitOutTime'].isna()]
+    if 'PitInTime' in laps.columns:
+        laps = laps[laps['PitInTime'].isna()]
     laps = laps[laps['LapNumber'] > 2]
 
     return laps

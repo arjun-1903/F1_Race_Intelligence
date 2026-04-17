@@ -23,12 +23,15 @@ def generate_insights(laps_df, degradation, drivers):
         if len(degs) >= 2:
             sorted_degs = sorted(degs, key=lambda x: x['DegradationRate'], reverse=True)
             d1 = sorted_degs[0]
-            d2 = sorted_degs[-1]
-            diff = d1['DegradationRate'] - d2['DegradationRate']
-            if diff > 0.04:
-                comparative_insights.append(
-                    f"⚡ {d1['Driver']}'s {c.lower()} tyres dropped off faster than {d2['Driver']}'s during their stint"
-                )
+            # Ensure we don't compare a driver's stint to their own secondary stint
+            d2 = next((d for d in reversed(sorted_degs) if d['Driver'] != d1['Driver']), None)
+            
+            if d2 is not None:
+                diff = d1['DegradationRate'] - d2['DegradationRate']
+                if diff > 0.04:
+                    comparative_insights.append(
+                        f"⚡ {d1['Driver']}'s {c.lower()} tyres dropped off faster than {d2['Driver']}'s during their stint"
+                    )
     
     # 2. High Degradation 
     extreme_insights = []

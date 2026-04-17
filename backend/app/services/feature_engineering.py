@@ -1,4 +1,5 @@
 def add_tyre_life(laps):
+    if laps.empty: return laps
     laps = laps.copy()
 
     # Tyre life = lap number within stint
@@ -7,6 +8,7 @@ def add_tyre_life(laps):
     return laps
 
 def adjust_for_fuel(laps):
+    if laps.empty: return laps
     laps = laps.copy()
 
     # Convert lap time to seconds
@@ -22,6 +24,7 @@ def adjust_for_fuel(laps):
     return laps
 
 def remove_stint_edges(laps):
+    if laps.empty: return laps
     laps = laps.copy()
 
     laps['StintLapCount'] = laps.groupby(['Driver', 'Stint'])['LapNumber'].transform('count')
@@ -32,6 +35,7 @@ def remove_stint_edges(laps):
     return laps
 
 def smooth_lap_times(laps):
+    if laps.empty: return laps
     laps = laps.copy()
 
     laps['SmoothedLapTime'] = laps.groupby(['Driver', 'Stint'])['AdjustedLapTime'] \
